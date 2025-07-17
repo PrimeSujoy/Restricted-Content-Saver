@@ -1,4 +1,4 @@
-from motor.motor_asyncio import AsyncIOMotorClient
+import pymongo
 from datetime import datetime, timedelta
 import random
 import string
@@ -7,12 +7,12 @@ import re
 
 class RedeemCodesDB:
     def __init__(self, database_url: str, database_name: str):
-        self.client = AsyncIOMotorClient(database_url)
+        self.client = pymongo.MongoClient(database_url)
         self.db = self.client[database_name]
         self.redeem_codes = self.db.redeem_codes
         self.users = self.db.users
     
-    async def generate_redeem_codes(self, count: int, duration_days: float) -> List[str]:
+    def generate_redeem_codes(self, count: int, duration_days: float) -> List[str]:
         """Generate redeem codes and store in MongoDB"""
         codes = []
         expires_at = datetime.now() + timedelta(hours=2)  # Codes expire in 2 hours
@@ -22,7 +22,7 @@ class RedeemCodesDB:
             code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
             
             # Insert code into database
-            await self.redeem_codes.insert_one({
+            self.redeem_codes.insert_one({
                 "code": code,
                 "premium_duration_days": duration_days,
                 "created_at": datetime.now(),
@@ -36,17 +36,17 @@ class RedeemCodesDB:
         
         return codes
     
-    async def redeem_code(self, code: str, user_id: int) -> Tuple[bool, str]:
+    def redeem_code(self, code: str, user_id: int) -> Tuple[bool, str]:
         """Redeem a code for premium access"""
         
         # Check if user already has active premium
-        user = await self.users.find_one({"user_id": user_id})
+        user = self.users.find_one({"user_id": user_id})
         if user and user.get("is_premium") and user.get("premium_until"):
             if datetime.now() < user["premium_until"]:
-                return False, "You already have premium. You can't"
+                return False, "You already have premium. You can't redeem another code while premium is active."
         
         # Check if code exists and is valid
-        code_data = await self.redeem_codes.find_one({"code": code})
+        code_data = self.redeem_codes.find_one({"code": code})
         
         if not code_data:
             return False, "❌ Invalid redemption code!"
@@ -59,7 +59,7 @@ class RedeemCodesDB:
             return False, "❌ This redemption code has expired!"
         
         # Mark code as used
-        await self.redeem_codes.update_one(
+        self.redeem_codes.update_one(
             {"code": code},
             {
                 "$set": {
@@ -75,7 +75,7 @@ class RedeemCodesDB:
         new_end = datetime.now() + premium_duration
         
         # Update user's premium status
-        await self.users.update_one(
+        self.users.update_one(
             {"user_id": user_id},
             {
                 "$set": {
@@ -87,7 +87,7 @@ class RedeemCodesDB:
         )
         
         duration_text = self.format_duration(code_data["premium_duration_days"])
-        return True, f"🎉 **Congratulations!**\n✅ Code successfully redeemed!\n⏱️ **Premium Duration:** {duration_text}\n📅 **Expires On:** {new_end.strftime('%d-%m-%Y %I:%M:%S %p')}\n\nEnjoy your premium access! Use `/myplan` to check your subscription details."
+        return True, f"🎉 **Congratulations!**\n✅ Code successfully redeemed!\n⏱️ **Premium Duration:** {duration_text}\n📅 **Expires On:** {new_end.strftime('%d-%m-%Y %I:%M:%S %p')}\n\nEnjoy your premium access! Use `/status` to check your subscription details."
     
     def format_duration(self, days: float) -> str:
         """Format duration in days to human readable format"""
@@ -133,16 +133,16 @@ class RedeemCodesDB:
         else:
             return None
     
-    async def get_codes_stats(self) -> dict:
+    def get_codes_stats(self) -> dict:
         """Get statistics about redeem codes"""
-        active_codes = await self.redeem_codes.count_documents({
+        active_codes = self.redeem_codes.count_documents({
             "is_used": False,
             "expires_at": {"$gt": datetime.now()}
         })
         
-        used_codes = await self.redeem_codes.count_documents({"is_used": True})
+        used_codes = self.redeem_codes.count_documents({"is_used": True})
         
-        expired_codes = await self.redeem_codes.count_documents({
+        expired_codes = self.redeem_codes.count_documents({
             "expires_at": {"$lte": datetime.now()}
         })
         
@@ -152,10 +152,17 @@ class RedeemCodesDB:
             'expired': expired_codes
         }
     
-    async def clean_expired_codes(self) -> int:
+    def clean_expired_codes(self) -> int:
         """Clean expired codes from database"""
-        result = await self.redeem_codes.delete_many({
+        result = self.redeem_codes.delete_many({
             "expires_at": {"$lte": datetime.now()},
             "is_used": False
         })
         return result.deleted_count
+    
+    def is_user_premium(self, user_id: int) -> bool:
+        """Check if user has active premium"""
+        user = self.users.find_one({"user_id": user_id})
+        if user and user.get("is_premium") and user.get("premium_until"):
+            return datetime.now() < user["premium_until"]
+        return False

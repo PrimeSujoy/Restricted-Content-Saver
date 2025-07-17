@@ -5,7 +5,7 @@ from config import OWNER_ID, MONGO_DB
 from redeem_codes_db import RedeemCodesDB
 
 # Initialize database
-redeem_db = RedeemCodesDB(MONGO_DB, "your_database_name")  # Replace with your database name
+redeem_db = RedeemCodesDB(MONGO_DB, "restricted_bot")  # Replace with your database name
 
 async def gen_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /gen command for bot admin and owner"""

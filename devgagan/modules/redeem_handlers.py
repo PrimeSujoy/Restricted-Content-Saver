@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import asyncio
 
 from config import OWNER_ID, MONGO_DB
-from redeem_codes_db import RedeemCodesDB
+from devgagan.modules.redeem_codes_db import RedeemCodesDB
 
 # Initialize database
 redeem_db = RedeemCodesDB(MONGO_DB, "restricted_bot")
